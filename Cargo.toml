@@ -1,0 +1,26 @@
+[package]
+name = "game-engine"
+version = "0.1.0"
+authors = ["Jeremy Carter <jeremy@jeremycarter.ca>"]
+
+[lib]
+name = "engine"
+path = "src/lib.rs"
+
+[[bin]]
+name = "game"
+path = "src/main.rs"
+
+[dependencies]
+vulkano = "0.9"
+vulkano-shader-derive = "0.9"
+vulkano-win = "0.9"
+cgmath = "0.16"
+gltf-importer = "0.10"
+image = "0.18"
+winit = "0.11"
+time = "0.1"
+
+[dependencies.gltf]
+version = "0.10"
+features = ["extras", "names"]
