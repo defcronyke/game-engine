@@ -45,7 +45,6 @@ use cgmath::perspective;
 use cgmath::Rad;
 use cgmath::Point3;
 use cgmath::Vector3;
-use cgmath::Quaternion;
 use gltf;
 use gltf_importer;
 use image;
@@ -451,12 +450,13 @@ impl GltfModel {
 	pub fn draw_default_scene(
 		&self,
 		viewport_dimensions: [u32; 2],
-		trans: Vector3<f32>,
-		rot: Quaternion<f32>,
+		pos: Point3<f32>,
+		dir: Vector3<f32>,
+		up: Vector3<f32>,
 		builder: AutoCommandBufferBuilder,
 	) -> AutoCommandBufferBuilder {
 		if let Some(scene) = self.gltf.default_scene() {
-			self.draw_scene(scene.index(), viewport_dimensions, trans, rot, builder)
+			self.draw_scene(scene.index(), viewport_dimensions, pos, dir, up, builder)
 		} else {
 			builder
 		}
@@ -472,30 +472,21 @@ impl GltfModel {
 		&self,
 		scene_id: usize,
 		viewport_dimensions: [u32; 2],
-		trans: Vector3<f32>,
-		rot: Quaternion<f32>,
+		pos: Point3<f32>,
+		dir: Vector3<f32>,
+		up: Vector3<f32>,
 		mut builder: AutoCommandBufferBuilder,
 	) -> AutoCommandBufferBuilder {
 		let scene = self.gltf.scenes().nth(scene_id).unwrap();
 		for node in scene.nodes() {
-			let fovy = Rad(60.0 * f32::consts::PI / 180.0);
+			let fovy = Rad(45.0f32.to_radians());
 			let mut aspect = viewport_dimensions[0] as f32 / viewport_dimensions[1] as f32;
 			let near = 0.1;
 			let far = 100.0;
 			let mut proj = perspective(fovy, aspect, near, far);
-			let view = Matrix4::look_at(
-				Point3::new(0.0, 1.0, -5.0),
-				Point3::new(0.0, 1.0, 0.0),
-				Vector3::new(0.0, -1.0, 0.0),
-			);
-			let trans_mat = Matrix4::from_translation(trans);
-			let rot_mat = Matrix4::from(rot);
-			builder = self.draw_node(
-				node.index(),
-				proj * trans_mat * rot_mat * view,
-				viewport_dimensions,
-				builder,
-			);
+			let view = Matrix4::look_at(pos, pos + dir, up);
+
+			builder = self.draw_node(node.index(), proj * view, viewport_dimensions, builder);
 		}
 
 		builder

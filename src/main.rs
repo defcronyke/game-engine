@@ -12,8 +12,8 @@
 // This file contains the `main` function that creates the window and performs the drawing, but
 // the interesting part is in the `gltf_system` module.
 
-extern crate engine;
 extern crate cgmath;
+extern crate engine;
 extern crate gltf;
 extern crate gltf_importer;
 extern crate image;
@@ -38,7 +38,7 @@ use vulkano::swapchain::SwapchainCreationError;
 use vulkano::sync::now;
 use vulkano::sync::GpuFuture;
 use cgmath::Vector3;
-use cgmath::Quaternion;
+use cgmath::Point3;
 use std::env;
 use std::path::Path;
 use std::sync::Arc;
@@ -57,7 +57,13 @@ fn main() {
 		.expect("no device available");
 
 	let mut events_loop = winit::EventsLoop::new();
+
+	for (num, monitor) in events_loop.get_available_monitors().enumerate() {
+		println!("Monitor #{}: {:?}", num, monitor.get_name());
+	}
+
 	let surface = winit::WindowBuilder::new()
+		.with_fullscreen(Some(events_loop.get_available_monitors().nth(0).unwrap()))
 		.build_vk_surface(&events_loop, instance.clone())
 		.unwrap();
 
@@ -146,22 +152,30 @@ fn main() {
 	let mut recreate_swapchain = false;
 	let mut previous_frame_end = Box::new(now(device.clone())) as Box<GpuFuture>;
 
-	let movement_speed = 0.5;
-	let mut movement_vec = Vector3::new(0.0, 0.0, 0.0);
+	let mut pos = Point3::new(0.0, 0.0, 5.0);
+	let move_speed = 0.1;
 
-	let rotation_speed_deg = 1.0;
-	let rotation_speed = rotation_speed_deg * f32::consts::PI / 180.0;
-	let rotation_angle_deg = 0.0;
-	let rotation_angle = rotation_angle_deg * f32::consts::PI / 180.0;
-	let rotation_axis = Vector3::new(0.0, 1.0, 0.0);
-	let rotation_scalar = (rotation_angle / 2.0 as f32).cos();
-	let rotation_vec = Vector3::new(
-		rotation_axis.x * (rotation_angle / 2.0 as f32).sin(),
-		rotation_axis.y * (rotation_angle / 2.0 as f32).sin(),
-		rotation_axis.z * (rotation_angle / 2.0 as f32).sin(),
+	let mut horizontal_angle = f32::consts::PI;
+	let mut vertical_angle: f32 = 0.0;
+	let mouse_speed = 0.02;
+
+	let mut dir = Vector3::new(
+		vertical_angle.cos() * horizontal_angle.sin(),
+		vertical_angle.sin(),
+		vertical_angle.cos() * horizontal_angle.cos(),
 	);
-	let mut rotation_quat = Quaternion::from_sv(rotation_scalar, rotation_vec);
-	let mut last_x = 0.0;
+
+	let mut right = Vector3::new(
+		(horizontal_angle - f32::consts::FRAC_PI_2).sin(),
+		0.0,
+		(horizontal_angle - f32::consts::FRAC_PI_2).cos(),
+	);
+
+	let mut up = right.cross(dir);
+	up.y = -up.y;
+
+	let mut last_x: f32 = 0.0;
+	let mut last_y: f32 = 0.0;
 
 	loop {
 		previous_frame_end.cleanup_finished();
@@ -212,7 +226,7 @@ fn main() {
 				)
 				.unwrap();
 
-		builder = model.draw_default_scene(dimensions, movement_vec, rotation_quat, builder);
+		builder = model.draw_default_scene(dimensions, pos, dir, up, builder);
 
 		let command_buffer = builder.end_render_pass().unwrap().build().unwrap();
 
@@ -243,24 +257,27 @@ fn main() {
 							virtual_keycode,
 							..
 						} => match virtual_keycode {
+							Some(winit::VirtualKeyCode::Escape) => done = true,
 							Some(winit::VirtualKeyCode::W) => {
 								if state == winit::ElementState::Pressed {
-									movement_vec.z += movement_speed;
-								}
-							}
-							Some(winit::VirtualKeyCode::A) => {
-								if state == winit::ElementState::Pressed {
-									movement_vec.x += movement_speed;
+									pos += dir * move_speed;
+									pos.y = 0.0;
 								}
 							}
 							Some(winit::VirtualKeyCode::S) => {
 								if state == winit::ElementState::Pressed {
-									movement_vec.z -= movement_speed;
+									pos -= dir * move_speed;
+									pos.y = 0.0;
+								}
+							}
+							Some(winit::VirtualKeyCode::A) => {
+								if state == winit::ElementState::Pressed {
+									pos += right * move_speed;
 								}
 							}
 							Some(winit::VirtualKeyCode::D) => {
 								if state == winit::ElementState::Pressed {
-									movement_vec.x -= movement_speed;
+									pos -= right * move_speed;
 								}
 							}
 							_ => println!("couldn't detect which key was pressed/released"),
@@ -271,30 +288,40 @@ fn main() {
 					event: winit::WindowEvent::CursorMoved { position, .. },
 					..
 				} => {
-					// println!("cursor moved: {:?}", position);
-					let diff_x = position.0 - last_x;
+					let diff_x = position.0 as f32 - last_x;
+					let diff_y = position.1 as f32 - last_y;
+
+					// // println!("horizontal_angle {}", horizontal_angle);
 					if diff_x > 0.0 {
-						// println!("turn right");
-						let rotation_scalar = ((rotation_angle + rotation_speed) / 2.0 as f32).cos();
-						let rotation_vec = Vector3::new(
-							rotation_axis.x * ((rotation_angle + rotation_speed) / 2.0 as f32).sin(),
-							rotation_axis.y * ((rotation_angle + rotation_speed) / 2.0 as f32).sin(),
-							rotation_axis.z * ((rotation_angle + rotation_speed) / 2.0 as f32).sin(),
-						);
-						let rotation_quat2 = Quaternion::from_sv(rotation_scalar, rotation_vec);
-						rotation_quat = rotation_quat * rotation_quat2;
+						horizontal_angle += mouse_speed;
 					} else if diff_x < 0.0 {
-						// println!("turn left");
-						let rotation_scalar = ((rotation_angle - rotation_speed) / 2.0 as f32).cos();
-						let rotation_vec = Vector3::new(
-							rotation_axis.x * ((rotation_angle - rotation_speed) / 2.0 as f32).sin(),
-							rotation_axis.y * ((rotation_angle - rotation_speed) / 2.0 as f32).sin(),
-							rotation_axis.z * ((rotation_angle - rotation_speed) / 2.0 as f32).sin(),
-						);
-						let rotation_quat2 = Quaternion::from_sv(rotation_scalar, rotation_vec);
-						rotation_quat = rotation_quat * rotation_quat2;
+						horizontal_angle -= mouse_speed;
 					}
-					last_x = position.0;
+					if horizontal_angle.to_degrees() > 360.0 {
+						horizontal_angle -= 360.0f32.to_radians();
+					} else if horizontal_angle.to_degrees() < 0.0 {
+						horizontal_angle += 360.0f32.to_radians();
+					}
+
+					// println!("vertical_angle {}", vertical_angle);
+					if diff_y > 0.0 {
+						vertical_angle -= mouse_speed;
+					} else if diff_y < 0.0 {
+						vertical_angle += mouse_speed;
+					}
+					vertical_angle = vertical_angle.max(-90.0f32.to_radians()).min(90.0f32.to_radians());
+
+					dir.x = vertical_angle.cos() * horizontal_angle.sin();
+					dir.y = vertical_angle.sin();
+					dir.z = vertical_angle.cos() * horizontal_angle.cos();
+					right.x = (horizontal_angle - f32::consts::FRAC_PI_2).sin();
+					right.y = 0.0;
+					right.z = (horizontal_angle - f32::consts::FRAC_PI_2).cos();
+					up = right.cross(dir);
+					up.y = -up.y;
+
+					last_x = position.0 as f32;
+					last_y = position.1 as f32;
 				}
 				_ => (),
 			}
