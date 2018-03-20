@@ -44,6 +44,7 @@ use std::path::Path;
 use std::sync::Arc;
 use std::mem;
 use std::f32;
+use std::time::Instant;
 
 fn main() {
 	// These initialization steps are common to all examples. See the `triangle` example if you
@@ -63,7 +64,7 @@ fn main() {
 	}
 
 	let surface = winit::WindowBuilder::new()
-		.with_fullscreen(Some(events_loop.get_available_monitors().nth(0).unwrap()))
+		// .with_fullscreen(Some(events_loop.get_available_monitors().nth(0).unwrap()))
 		.build_vk_surface(&events_loop, instance.clone())
 		.unwrap();
 
@@ -152,12 +153,13 @@ fn main() {
 	let mut recreate_swapchain = false;
 	let mut previous_frame_end = Box::new(now(device.clone())) as Box<GpuFuture>;
 
+	let move_speed = 0.008;
+	let mouse_speed = 0.0015;
+
 	let mut pos = Point3::new(0.0, 0.0, 5.0);
-	let move_speed = 0.1;
 
 	let mut horizontal_angle = f32::consts::PI;
 	let mut vertical_angle: f32 = 0.0;
-	let mouse_speed = 0.02;
 
 	let mut dir = Vector3::new(
 		vertical_angle.cos() * horizontal_angle.sin(),
@@ -177,7 +179,16 @@ fn main() {
 	let mut last_x: f32 = 0.0;
 	let mut last_y: f32 = 0.0;
 
+	let mut last_time_delta = Instant::now();
+
+	let (mut w, mut a, mut s, mut d) = (false, false, false, false);
+
 	loop {
+		let time_duration = last_time_delta.elapsed();
+		let time_delta = (time_duration.as_secs() * 1_000) + ((time_duration.subsec_nanos() / 1_000_000) as u64);
+		last_time_delta = Instant::now();
+		// println!("time_delta: {}", time_delta as f32);
+
 		previous_frame_end.cleanup_finished();
 
 		let dimensions = {
@@ -258,26 +269,33 @@ fn main() {
 							..
 						} => match virtual_keycode {
 							Some(winit::VirtualKeyCode::Escape) => done = true,
+
 							Some(winit::VirtualKeyCode::W) => {
 								if state == winit::ElementState::Pressed {
-									pos += dir * move_speed;
-									pos.y = 0.0;
+									w = true;
+								} else if state == winit::ElementState::Released {
+									w = false;
 								}
 							}
 							Some(winit::VirtualKeyCode::S) => {
 								if state == winit::ElementState::Pressed {
-									pos -= dir * move_speed;
-									pos.y = 0.0;
+									s = true;
+								} else if state == winit::ElementState::Released {
+									s = false;
 								}
 							}
 							Some(winit::VirtualKeyCode::A) => {
 								if state == winit::ElementState::Pressed {
-									pos += right * move_speed;
+									a = true;
+								} else if state == winit::ElementState::Released {
+									a = false;
 								}
 							}
 							Some(winit::VirtualKeyCode::D) => {
 								if state == winit::ElementState::Pressed {
-									pos -= right * move_speed;
+									d = true;
+								} else if state == winit::ElementState::Released {
+									d = false;
 								}
 							}
 							_ => println!("couldn't detect which key was pressed/released"),
@@ -293,32 +311,38 @@ fn main() {
 
 					// // println!("horizontal_angle {}", horizontal_angle);
 					if diff_x > 0.0 {
-						horizontal_angle += mouse_speed;
+						horizontal_angle += time_delta as f32 * mouse_speed;
 					} else if diff_x < 0.0 {
-						horizontal_angle -= mouse_speed;
+						horizontal_angle -= time_delta as f32 * mouse_speed;
 					}
-					if horizontal_angle.to_degrees() > 360.0 {
-						horizontal_angle -= 360.0f32.to_radians();
-					} else if horizontal_angle.to_degrees() < 0.0 {
-						horizontal_angle += 360.0f32.to_radians();
+					if diff_x != 0.0 {
+						if horizontal_angle.to_degrees() > 360.0 {
+							horizontal_angle -= 360.0f32.to_radians();
+						} else if horizontal_angle.to_degrees() < 0.0 {
+							horizontal_angle += 360.0f32.to_radians();
+						}
 					}
 
 					// println!("vertical_angle {}", vertical_angle);
 					if diff_y > 0.0 {
-						vertical_angle -= mouse_speed;
+						vertical_angle -= time_delta as f32 * mouse_speed;
 					} else if diff_y < 0.0 {
-						vertical_angle += mouse_speed;
+						vertical_angle += time_delta as f32 * mouse_speed;
 					}
-					vertical_angle = vertical_angle.max(-90.0f32.to_radians()).min(90.0f32.to_radians());
+					if diff_y != 0.0 {
+						vertical_angle = vertical_angle.max(-90.0f32.to_radians()).min(90.0f32.to_radians());
+					}
 
-					dir.x = vertical_angle.cos() * horizontal_angle.sin();
-					dir.y = vertical_angle.sin();
-					dir.z = vertical_angle.cos() * horizontal_angle.cos();
-					right.x = (horizontal_angle - f32::consts::FRAC_PI_2).sin();
-					right.y = 0.0;
-					right.z = (horizontal_angle - f32::consts::FRAC_PI_2).cos();
-					up = right.cross(dir);
-					up.y = -up.y;
+					if diff_x != 0.0 || diff_y != 0.0 {
+						dir.x = vertical_angle.cos() * horizontal_angle.sin();
+						dir.y = vertical_angle.sin();
+						dir.z = vertical_angle.cos() * horizontal_angle.cos();
+						right.x = (horizontal_angle - f32::consts::FRAC_PI_2).sin();
+						right.y = 0.0;
+						right.z = (horizontal_angle - f32::consts::FRAC_PI_2).cos();
+						up = right.cross(dir);
+						up.y = -up.y;
+					}
 
 					last_x = position.0 as f32;
 					last_y = position.1 as f32;
@@ -326,6 +350,22 @@ fn main() {
 				_ => (),
 			}
 		});
+
+		if w {
+			pos += dir * time_delta as f32 * move_speed;
+			pos.y = 0.0;
+		}
+		if s {
+			pos -= dir * time_delta as f32 * move_speed;
+			pos.y = 0.0;
+		}
+		if a {
+			pos += right * time_delta as f32 * move_speed;
+		}
+		if d {
+			pos -= right * time_delta as f32 * move_speed;
+		}
+
 		if done {
 			return;
 		}
