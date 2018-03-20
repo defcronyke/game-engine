@@ -352,18 +352,34 @@ fn main() {
 		});
 
 		if w {
-			pos += dir * time_delta as f32 * move_speed;
+			if a || d {
+				pos += dir * (time_delta as f32 * move_speed) / 2.0;
+			} else {
+				pos += dir * time_delta as f32 * move_speed;
+			}
 			pos.y = 0.0;
 		}
 		if s {
-			pos -= dir * time_delta as f32 * move_speed;
+			if a || d {
+				pos -= dir * (time_delta as f32 * move_speed) / 2.0;
+			} else {
+				pos -= dir * time_delta as f32 * move_speed;
+			}
 			pos.y = 0.0;
 		}
 		if a {
-			pos += right * time_delta as f32 * move_speed;
+			if w || s {
+				pos += right * (time_delta as f32 * move_speed) / 2.0;
+			} else {
+				pos += right * time_delta as f32 * move_speed;
+			}
 		}
 		if d {
-			pos -= right * time_delta as f32 * move_speed;
+			if w || s {
+				pos -= right * (time_delta as f32 * move_speed) / 2.0;
+			} else {
+				pos -= right * time_delta as f32 * move_speed;
+			}
 		}
 
 		if done {
